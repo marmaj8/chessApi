@@ -86,13 +86,234 @@ router.get('/:gameId', (req,res,next) => {
 });
 
 router.put('/', (req,res,next) => {
-	res.status(404).json({
-            message: "nie ma"})
+    Player.findById(req.body.playerId)
+    .exec()
+    .then(docs => {
+        var game = new Game({
+            _id: new mongoose.Types.ObjectId(),
+            player1: req.body.playerId,
+        });
+        if (req.body.name != null){ game.name = req.body.name }
+        if (req.body.anyoneCanJoin == false)
+        {
+            game.anyoneCanJoin = false
+            game.password = req.body.password
+            if (game.password == null)
+            {
+                throw "Nie podano hasła!" 
+            }
+        }
+
+        var piecesId = []
+        var pieces = []
+            for(var i = 1; i < 9; i++)
+            {
+                var figure
+                var piece
+                switch(i)
+                {
+                    case 1:
+                        figure = 2
+                        break;
+                    case 2:
+                        figure = 1
+                        break;
+                    case 3:
+                        figure = 3
+                        break;
+                    case 4:
+                        figure = 4
+                        break;
+                    case 5:
+                        figure = 5
+                        break;
+                    case 6:
+                        figure = 3
+                        break;
+                    case 7:
+                        figure = 1
+                        break;
+                    case 8:
+                        figure = 2
+                        break;
+                }
+                piece = new Piece({
+                    _id: mongoose.Types.ObjectId(),    // nazwa : typ obiektu
+                    color: 1,
+                    posX: i,
+                    posY: 2,
+                    figure: 0,   // 0-pion, 1-skoczek, 2-wieza, 3-goniec, 4-dama, 5-krol
+                    game: game._id
+                })
+                pieces.push(piece)
+                piecesId.push(piece._id)
+                piece = new Piece({
+                    _id: mongoose.Types.ObjectId(),    // nazwa : typ obiektu
+                    color: 2,
+                    posX: i,
+                    posY: 7,
+                    figure: 0,   // 0-pion, 1-skoczek, 2-wieza, 3-goniec, 4-dama, 5-krol
+                    game: game._id
+                })
+                pieces.push(piece)
+                piecesId.push(piece._id)
+                piece = new Piece({
+                    _id: mongoose.Types.ObjectId(),    // nazwa : typ obiektu
+                    color: 1,
+                    posX: i,
+                    posY: 1,
+                    figure: figure,   // 0-pion, 1-skoczek, 2-wieza, 3-goniec, 4-dama, 5-krol
+                    game: game._id
+                })
+                pieces.push(piece)
+                piecesId.push(piece._id)
+                piece = new Piece({
+                    _id: mongoose.Types.ObjectId(),    // nazwa : typ obiektu
+                    color: 2,
+                    posX: i,
+                    posY: 8,
+                    figure: figure,   // 0-pion, 1-skoczek, 2-wieza, 3-goniec, 4-dama, 5-krol
+                    game: game._id
+                })
+                pieces.push(piece)
+                piecesId.push(piece._id)
+            }
+            Piece.insertMany(pieces)
+            .then(result => {
+                //console.log(result)
+            })
+            .catch(err => {
+                console.log(`Error: ${err}`);
+            });
+
+
+        game.pieces = piecesId
+        game.save()
+        .then(result => {
+            
+            var player1 = null
+            var player2 = null
+            
+                if (game.player1 != null)
+                {
+                    player1 = game.player1.name
+                }
+                if (game.player2 != null)
+                {
+                    player2 = game.player2.name
+                }
+            var ggame = {
+                _id: game._id,
+                name: game.name,
+                active: game.active,
+                started: game.started,
+                anyoneCanJoin: game.anyoneCanJoin,
+                activePlayer: game.activePlayer,
+                wihte: game.wihte,
+                player1: player1,
+                player2: player2,
+                pieces: game.pieces
+            }
+            
+            const io = req.app.get('socketio');
+            io.emit('newGame', ggame);
+            res.status(200).json({
+                message: "Utworzono gre",
+                createdGame: game._id
+            });
+        })
+        .catch(error => {
+            console.log(error);
+            throw error
+        });
+    })
+    .catch(err => {
+        res.status(500).json({
+            message: err
+        })
+    })
 });
 
 router.patch('/', (req,res,next) => {
-	res.status(404).json({
-            message: "nie ma"})
+    Game.findById(req.body.gameId)
+    .populate('player1')
+    .populate('player2')
+    .populate('pieces')
+    .exec()
+    .then(docs => {
+        if (docs.player1._id == req.body.playerId)
+        {
+            console.log("\t"+req.body.password)
+            console.log("\t"+req.body.anyoneCanJoin)
+            console.log("\t"+req.body.name)
+            game = docs
+            if (req.body.password != null)
+            {
+                game.anyoneCanJoin = false;
+                game.password = req.body.password
+            }
+            if (req.body.anyoneCanJoin == true)
+            {
+                game.anyoneCanJoin = true
+                game.password = null
+            }
+            
+            if (req.body.name != null)
+            {
+                game.name = req.body.name
+            }
+
+            game.save()
+            .then(result => {
+                const io = req.app.get('socketio');
+
+                res.status(200).json({
+                    message: "Zmieniono gre"
+                })
+            
+                var player1 = null
+                var player2 = null
+                
+                    if (game.player1 != null)
+                    {
+                        player1 = game.player1.name
+                    }
+                    if (game.player2 != null)
+                    {
+                        player2 = game.player2.name
+                    }
+                var ggame = {
+                    _id: game._id,
+                    name: game.name,
+                    active: game.active,
+                    started: game.started,
+                    anyoneCanJoin: game.anyoneCanJoin,
+                    activePlayer: game.activePlayer,
+                    wihte: game.wihte,
+                    player1: player1,
+                    player2: player2,
+                    pieces: game.pieces
+                }
+
+                io.emit('gameChanged-'+game._id, ggame);
+                game.pieces = null
+                io.emit('gameChanged', ggame);
+                //console.log(result);
+            })
+            .catch(error => {
+                console.log(error);
+            });
+        }
+        else
+        {
+            throw "Nie masz uprawnień"
+        }
+    })
+    .catch(err => {
+        res.status(500).json({
+            message: err
+        })
+    })
 });
 
 router.post('/join', (req,res,next) => {
